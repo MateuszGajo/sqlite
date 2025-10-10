@@ -103,7 +103,6 @@ func parseCell(data []byte, btreeType byte) (Cell, []byte) {
 		pageNumberLeftChild = data[:4]
 		data = data[4:]
 	}
-	fmt.Println(pageNumberLeftChild)
 
 	var numberOfBytesPayload uint64
 	if btreeType != 0x05 {
@@ -365,10 +364,40 @@ func (s SqliteServer) handleDbInfo() {
 	fmt.Printf("number of tables: %v\n", btreeHeader.numberOfCells)
 }
 
+func reverse[T any](s []T) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func (s SqliteServer) handleTablesInfo() {
+	page := s.reader.read(0)
+	page = page[100:]
+
+	btreeHeader := parseBtreeHeader(page[:12])
+
+	startContentData := btreeHeader.startOfCellContentArea - 100
+
+	contentData := page[startContentData:]
+
+	schemas := parseDataBaseSchemas(contentData, int(btreeHeader.numberOfCells))
+
+	reverse(schemas)
+
+	for i, schema := range schemas {
+		fmt.Printf(schema.tableName)
+		if i < len(schemas)-1 {
+			fmt.Printf(" ")
+		}
+	}
+}
+
 func (s SqliteServer) handle(command string) {
 	switch command {
 	case ".dbinfo":
 		s.handleDbInfo()
+	case ".tables":
+		s.handleTablesInfo()
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)
@@ -377,8 +406,8 @@ func (s SqliteServer) handle(command string) {
 
 // Usage: ./your_program.sh sample.db .dbinfo
 func main() {
-	databaseFilePath := "sample.db"
-	command := ".dbinfo"
+	databaseFilePath := os.Args[1]
+	command := os.Args[2]
 
 	reader := NewReader(databaseFilePath)
 
