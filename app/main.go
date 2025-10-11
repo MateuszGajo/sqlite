@@ -392,6 +392,10 @@ func (s SqliteServer) handleTablesInfo() {
 	}
 }
 
+func (s SqliteServer) handleSqlStatement(sqlStatement string) {
+
+}
+
 func (s SqliteServer) handle(command string) {
 	switch command {
 	case ".dbinfo":
@@ -399,8 +403,7 @@ func (s SqliteServer) handle(command string) {
 	case ".tables":
 		s.handleTablesInfo()
 	default:
-		fmt.Println("Unknown command", command)
-		os.Exit(1)
+		s.handleSqlStatement(command)
 	}
 }
 
