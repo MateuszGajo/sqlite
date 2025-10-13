@@ -62,6 +62,19 @@ var clauseKeywords = map[string]Token{
 	"COUNT":  Token{tokenType: countToken, value: "count"},
 }
 
+var aggregateTokens = []TokenType{
+	countToken,
+}
+
+func (t TokenType) isAggregate() bool {
+	for _, item := range aggregateTokens {
+		if item == t {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Tokenizer) parseChars() Token {
 	char := t.peek()
 	stringOutput := ""
@@ -99,6 +112,9 @@ func (t *Tokenizer) tokenizer() []Token {
 			t.next()
 		case ' ', '\n':
 			t.skipWhiteSpaces()
+			if t.peek() == ')' {
+				continue
+			}
 			tokens = append(tokens, Token{tokenType: spaceToken})
 		default:
 			tokens = append(tokens, t.parseChars())
@@ -192,19 +208,55 @@ func parseSqlStatement(input string) ASTNode {
 
 type ASTNode interface{}
 
-type AggregateNode struct {
+type fieldNode struct {
 	name string
 	args []string
 }
 
+type Agregate string
+
+const (
+	countAggregate Agregate = "count"
+)
+
+type SelectStatementFieldNode struct {
+	field string
+}
+type SelectStatementAggregateNode struct {
+	name Agregate
+	SelectStatementFieldNode
+}
+
+type SelectStatementNode interface{}
+
 type SelectStatement struct {
-	aggregate AggregateNode
-	from      string
+	fields []SelectStatementNode
+	from   string
 }
 
 type CreateTableStatement struct {
 	tableName string
-	args      [][]string
+	columns   []CreateTableColumn
+}
+
+type Constrain string
+
+const (
+	notNull       Constrain = "NotNull"
+	primaryKey    Constrain = "PrimaryKey"
+	autoIncrement Constrain = "AutoIncrement"
+)
+
+// var sqlConstrainTokens = map[Constrain][][2]string{
+// 	notNullConstrain:    {{"NOT", "NULL"}},
+// 	primaryKeyConstrain: {{"PRIMARY", "KEY"}},
+// 	autoIncrement:       {{"AUTOINCREMENT"}},
+// }
+
+type CreateTableColumn struct {
+	name       string
+	columnType string
+	constrains []Constrain
 }
 
 func (p *Parser) selectCause() (SelectStatement, error) {
@@ -213,10 +265,15 @@ func (p *Parser) selectCause() (SelectStatement, error) {
 		return SelectStatement{}, err
 	}
 
-	aggregate, err := p.Aggregate()
+	fields, err := p.selectStatemntFieldOrAggregate()
 	if err != nil {
 		return SelectStatement{}, err
 	}
+
+	// _, err = p.expectNext(spaceToken)
+	// if err != nil {
+	// 	return SelectStatement{}, err
+	// }
 
 	from, err := p.fromClause()
 	if err != nil {
@@ -224,9 +281,74 @@ func (p *Parser) selectCause() (SelectStatement, error) {
 	}
 
 	return SelectStatement{
-		aggregate: aggregate,
-		from:      from,
+		fields: fields,
+		from:   from,
 	}, nil
+}
+
+func (p *Parser) selectStatemntFieldOrAggregate() ([]SelectStatementNode, error) {
+	// aggregate statement are much complicated than this, we should also check group by statement but at the analyzer phase
+
+	nodes := []SelectStatementNode{}
+	var node SelectStatementNode
+	var err error
+	for {
+		token := p.next()
+
+		switch {
+		case token.tokenType.isAggregate():
+			node, err = p.selectStatementGetAggregateField()
+		case token.tokenType == identifierToken:
+			node = p.selectStatementGetFields()
+		default:
+			return nil, fmt.Errorf("expected select statement to have following field or aggregate instead got: %v", token.tokenType)
+		}
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+		p.next()
+
+		if p.peek().tokenType == commaToken {
+			p.next()
+			continue
+		} else if p.peek().tokenType != spaceToken {
+			return nil, fmt.Errorf("expected select statement to space got: %v", token.tokenType)
+		}
+		break
+	}
+
+	return nodes, nil
+}
+
+func (p *Parser) selectStatementGetFields() SelectStatementFieldNode {
+	token := p.peek()
+
+	if token.tokenType == starToken {
+		return SelectStatementFieldNode{field: "*"}
+	}
+
+	return SelectStatementFieldNode{field: token.value}
+}
+
+func (p *Parser) selectStatementGetAggregateField() (SelectStatementAggregateNode, error) {
+	aggregateType := p.peek()
+	_, err := p.expectNext(lParenToken)
+	if err != nil {
+		return SelectStatementAggregateNode{}, err
+	}
+
+	p.next()
+
+	node := p.selectStatementGetFields()
+
+	_, err = p.expectNext(rParenToken)
+	if err != nil {
+		return SelectStatementAggregateNode{}, err
+	}
+
+	return SelectStatementAggregateNode{name: Agregate(aggregateType.value), SelectStatementFieldNode: node}, nil
+
 }
 
 func (p *Parser) createCause() (ASTNode, error) {
@@ -259,7 +381,7 @@ func (p *Parser) createTableClause() (CreateTableStatement, error) {
 		return CreateTableStatement{}, err
 	}
 
-	args, err := p.readArgsWithCommasn()
+	columns, err := p.readCreateTableColumns()
 
 	if err != nil {
 		return CreateTableStatement{}, err
@@ -267,46 +389,62 @@ func (p *Parser) createTableClause() (CreateTableStatement, error) {
 
 	return CreateTableStatement{
 		tableName: tableName.value,
-		args:      args,
+		columns:   columns,
 	}, nil
 
 }
 
-func (p *Parser) readArgsWithCommasn() ([][]string, error) {
-	token := p.next()
-	if token.tokenType != lParenToken {
-		return nil, fmt.Errorf("Expect to start with left parentheses")
+func (p *Parser) readCreateTableColumns() ([]CreateTableColumn, error) {
+	p.next()
+	if p.peek().tokenType != lParenToken {
+		return nil, fmt.Errorf("expect to start with left parentheses")
 	}
-	token = p.next()
-	// i := 0;
-	args1 := [][]string{}
 
-main:
-	for {
+	createTableColumns := []CreateTableColumn{}
+
+	for p.peek().tokenType != rParenToken {
+		p.next()
 		p.skipWhiteSpaces()
-		args := []string{}
-		for token.tokenType != commaToken {
-			args = append(args, token.value)
-			p.next()
-			p.skipWhiteSpaces()
-			token = p.peek()
-			if token.tokenType == rParenToken {
-				args1 = append(args1, args)
-				break main
-			}
-			if token.tokenType == commaToken {
+
+		crateTableColumn := CreateTableColumn{constrains: []Constrain{}}
+		crateTableColumn.name = p.peek().value
+
+		p.next()
+
+		crateTableColumn.columnType = p.next().value
+
+		p.next()
+		for p.peek().tokenType != commaToken && p.peek().tokenType != rParenToken {
+			switch strings.ToUpper(p.next().value) {
+			case "NOT":
 				p.next()
-				p.skipWhiteSpaces()
-				token = p.peek()
-				break
+				switch strings.ToUpper(p.next().value) {
+				case "NULL":
+					crateTableColumn.constrains = append(crateTableColumn.constrains, notNull)
+				default:
+					return nil, fmt.Errorf("Not such constrain like not %v", p.peek().value)
+				}
+			case "PRIMARY":
+				p.next()
+				switch strings.ToUpper(p.next().value) {
+				case "KEY":
+					crateTableColumn.constrains = append(crateTableColumn.constrains, primaryKey)
+				default:
+					return nil, fmt.Errorf("Not such constrain like not %v", p.peek().value)
+				}
+			case "AUTOINCREMENT":
+				crateTableColumn.constrains = append(crateTableColumn.constrains, autoIncrement)
+			default:
+				return nil, fmt.Errorf("No such constrain like: %+v", p.peek().value)
 			}
+			p.next()
 
 		}
-		args1 = append(args1, args)
+		createTableColumns = append(createTableColumns, crateTableColumn)
 
 	}
 
-	return args1, nil
+	return createTableColumns, nil
 }
 
 func (p *Parser) fromClause() (string, error) {
@@ -326,68 +464,4 @@ func (p *Parser) fromClause() (string, error) {
 	}
 
 	return token.value, nil
-}
-
-func (p *Parser) Aggregate() (AggregateNode, error) {
-	name, err := p.expectNext(countToken)
-	if err != nil {
-		return AggregateNode{}, err
-	}
-	_, err = p.expectNext(lParenToken)
-	if err != nil {
-		return AggregateNode{}, err
-	}
-
-	tok := p.next()
-
-	if tok.tokenType != starToken && tok.tokenType != identifierToken {
-		return AggregateNode{}, fmt.Errorf("expected star token or identifier, got: %v", tok)
-	}
-
-	if tok.tokenType == starToken {
-		_, err := p.expectNext(rParenToken)
-		if err != nil {
-			return AggregateNode{}, err
-		}
-
-		_, err = p.expectNext(spaceToken)
-		if err != nil {
-			return AggregateNode{}, err
-		}
-
-		return AggregateNode{
-			name: string(name.value),
-			args: []string{"*"},
-		}, nil
-	}
-
-	token := p.next()
-	args := []string{}
-
-	for token.tokenType != rParenToken {
-		args = append(args, token.value)
-		_, err = p.expectNext(commaToken)
-		if err != nil {
-			return AggregateNode{}, err
-		}
-		token, err = p.expectNext(spaceToken)
-		if err != nil {
-			return AggregateNode{}, err
-		}
-
-		if token.tokenType == eofToken {
-			return AggregateNode{}, fmt.Errorf("unexpected eof token when parsing aggregate")
-		}
-	}
-
-	_, err = p.expectNext(spaceToken)
-	if err != nil {
-		return AggregateNode{}, err
-	}
-
-	return AggregateNode{
-		name: string(name.value),
-		args: args,
-	}, nil
-
 }

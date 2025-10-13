@@ -57,7 +57,15 @@ func (s SqliteServer) handleSelectStatement(statement SelectStatement) error {
 	pageParsed := parsePage(page, int(schemaa.rootPage))
 
 	fmt.Println(pageParsed)
-	// sql := parseSqlStatement(schemaa.sqlText)
+	sql := parseSqlStatement(schemaa.sqlText)
+
+	_, ok := sql.(CreateTableStatement)
+
+	if !ok {
+		// for simplicity allow only create table, will be extended later
+		return fmt.Errorf("reading schema, expected create table statement")
+	}
+	// statement.
 	fmt.Println(string(schemaa.sqlText))
 
 	return nil
