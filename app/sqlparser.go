@@ -27,7 +27,7 @@ func (t *Tokenizer) next() byte {
 }
 
 func (t *Tokenizer) skipWhiteSpaces() {
-	for !t.eof() && (t.peek() == ' ' || t.peek() == '\n') {
+	for !t.eof() && (t.peek() == ' ' || t.peek() == '\n' || t.peek() == '\t') {
 		t.next()
 	}
 }
@@ -92,6 +92,7 @@ func (t *Tokenizer) parseChars() Token {
 	return Token{tokenType: identifierToken, value: stringOutput}
 }
 
+// "CREATE TABLE apples\n(\n\tid integer primary key autoincrement,\n\tname text,\n\tcolor text\n)"
 // Toknizer shoudl skip useless whitespaces
 func (t *Tokenizer) tokenizer() []Token {
 	tokens := []Token{}
@@ -110,7 +111,7 @@ func (t *Tokenizer) tokenizer() []Token {
 		case ',':
 			tokens = append(tokens, Token{tokenType: commaToken})
 			t.next()
-		case ' ', '\n':
+		case ' ', '\n', '\t':
 			t.skipWhiteSpaces()
 			if t.peek() == ')' {
 				continue

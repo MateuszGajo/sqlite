@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 )
 
 type SqliteServer struct {
@@ -56,7 +58,7 @@ func (s SqliteServer) handleSelectStatement(statement SelectStatement) error {
 
 	pageParsed := parsePage(page, int(schemaa.rootPage))
 
-	fmt.Println(pageParsed)
+	// fmt.Println(pageParsed)
 	sql := parseSqlStatement(schemaa.sqlText)
 
 	_, ok := sql.(CreateTableStatement)
@@ -65,8 +67,24 @@ func (s SqliteServer) handleSelectStatement(statement SelectStatement) error {
 		// for simplicity allow only create table, will be extended later
 		return fmt.Errorf("reading schema, expected create table statement")
 	}
-	// statement.
-	fmt.Println(string(schemaa.sqlText))
+	// simple case handle only count *, extend later
+
+	switch v := statement.fields[0].(type) {
+	case SelectStatementAggregateNode:
+		switch v.name {
+		case countAggregate:
+			if v.field == "*" {
+				val := strconv.Itoa(int(pageParsed.btreeHeader.numberOfCells))
+				fmt.Println(val)
+			} else {
+				panic("count not support anything thant * currently")
+			}
+		default:
+			panic(fmt.Sprintf("Not supported aggregate: %v", v))
+		}
+	default:
+		panic("Not supported statement field")
+	}
 
 	return nil
 
@@ -97,10 +115,10 @@ func (s SqliteServer) handle(command string) {
 // Usage: ./your_program.sh sample.db .dbinfo
 // sample.db "SELECT COUNT(*) FROM apples"
 func main() {
-	// databaseFilePath := os.Args[1]
-	// command := os.Args[2]
-	databaseFilePath := "sample.db"
-	command := "SELECT COUNT(*) FROM apples"
+	databaseFilePath := os.Args[1]
+	command := os.Args[2]
+	// databaseFilePath := "sample.db"
+	// command := "SELECT COUNT(*) FROM apples"
 
 	reader := NewReader(databaseFilePath)
 
