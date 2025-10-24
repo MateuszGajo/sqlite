@@ -224,7 +224,8 @@ type SelectStatementFieldNode struct {
 	field string
 }
 type SelectStatementAggregateNode struct {
-	name Agregate
+	name    Agregate
+	rawName string
 	SelectStatementFieldNode
 }
 
@@ -348,7 +349,7 @@ func (p *Parser) selectStatementGetAggregateField() (SelectStatementAggregateNod
 		return SelectStatementAggregateNode{}, err
 	}
 
-	return SelectStatementAggregateNode{name: Agregate(aggregateType.value), SelectStatementFieldNode: node}, nil
+	return SelectStatementAggregateNode{name: Agregate(aggregateType.value), SelectStatementFieldNode: node, rawName: aggregateType.value + "(" + node.field + ")"}, nil
 
 }
 

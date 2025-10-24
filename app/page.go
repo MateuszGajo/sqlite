@@ -1,6 +1,8 @@
 package main
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 type DbHeader struct {
 	headerString                 []byte
@@ -92,6 +94,9 @@ func parseBtreeHeader(data []byte) BtreeHeader {
 }
 
 func parseCell(data []byte, btreeType byte) (Cell, []byte) {
+	// "\x81\x02\x01\a\x17\x19\x19\x01\x81_tablebananabanana\x02CREATE TABLE banana (id integer primary key, apple text,banana text,raspberry text,pear text,orange text)"
+	// fmt.Println("data", data, len(data))
+
 	var pageNumberLeftChild []byte
 	if btreeType == 0x05 || btreeType == 0x02 {
 		pageNumberLeftChild = data[:4]
@@ -103,6 +108,8 @@ func parseCell(data []byte, btreeType byte) (Cell, []byte) {
 		// b := data[0]
 		numberOfBytesPayload, data = parseVarint(data)
 	}
+
+	// 00000010 10000001
 
 	var rowid uint64
 	if btreeType == 0x0d || btreeType == 0x05 {
@@ -291,12 +298,4 @@ func parseDataBaseSchema(record []any) DbSchema {
 		rootPage:   rootPage,
 		sqlText:    string(sqlText),
 	}
-}
-
-func getSchemas(pageData []byte) []DbSchema {
-	page := parsePage(pageData, 0)
-
-	schemas := parseDataBaseSchemas(page)
-
-	return schemas
 }

@@ -4,20 +4,11 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"strconv"
 )
 
 type SqliteServer struct {
 	header DbHeader
 	reader Reader
-}
-
-func (s SqliteServer) getSchemas() []DbSchema {
-	schemas := getSchemas(s.reader.read(0))
-
-	reverse(schemas)
-
-	return schemas
 }
 
 func (s SqliteServer) handleDbInfo() {
@@ -31,7 +22,7 @@ func (s SqliteServer) handleDbInfo() {
 }
 
 func (s SqliteServer) handleTablesInfo() {
-	schemas := s.getSchemas()
+	schemas := s.reader.getSchemas()
 
 	for i, schema := range schemas {
 		fmt.Printf("%s", schema.tableName)
@@ -42,49 +33,24 @@ func (s SqliteServer) handleTablesInfo() {
 }
 
 func (s SqliteServer) handleSelectStatement(statement SelectStatement) error {
-	schemas := s.getSchemas()
-	var schemaa *DbSchema
-	for _, schema := range schemas {
-		if schema.tableName == statement.from {
-			schemaa = &schema
-		}
-	}
-	if schemaa == nil {
-		panic("could find page")
-		return fmt.Errorf("Couldnt find root page for table :%v", statement.from)
+
+	nodes := []any{}
+
+	for _, val := range statement.fields {
+		nodes = append(nodes, val)
 	}
 
-	page := s.reader.read(int(schemaa.rootPage))
+	planner := CreatePlanner()
+	executionPlan := planner.preparePlan(nodes, statement.from)
 
-	pageParsed := parsePage(page, int(schemaa.rootPage))
+	extutor := NewExecutor(s.reader)
+	executeCols, err := extutor.execute(executionPlan)
 
-	// fmt.Println(pageParsed)
-	sql := parseSqlStatement(schemaa.sqlText)
-
-	_, ok := sql.(CreateTableStatement)
-
-	if !ok {
-		// for simplicity allow only create table, will be extended later
-		return fmt.Errorf("reading schema, expected create table statement")
+	if err != nil {
+		return err
 	}
-	// simple case handle only count *, extend later
 
-	switch v := statement.fields[0].(type) {
-	case SelectStatementAggregateNode:
-		switch v.name {
-		case countAggregate:
-			if v.field == "*" {
-				val := strconv.Itoa(int(pageParsed.btreeHeader.numberOfCells))
-				fmt.Println(val)
-			} else {
-				panic("count not support anything thant * currently")
-			}
-		default:
-			panic(fmt.Sprintf("Not supported aggregate: %v", v))
-		}
-	default:
-		panic("Not supported statement field")
-	}
+	showResultSet(nodes, executeCols)
 
 	return nil
 
@@ -118,7 +84,9 @@ func main() {
 	databaseFilePath := os.Args[1]
 	command := os.Args[2]
 	// databaseFilePath := "sample.db"
-	// command := "SELECT COUNT(*) FROM apples"
+	// command := "SELECT name, color FROM apples"
+	// command := "SELECT count(*) FROM apples"
+	// command := "select pear, apple, raspberry from banana"
 
 	reader := NewReader(databaseFilePath)
 

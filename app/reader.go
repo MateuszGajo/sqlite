@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
 )
@@ -29,6 +30,15 @@ func NewReader(databaseFilePath string) Reader {
 		databaseFilePath: databaseFilePath,
 	}
 
+}
+
+func (r Reader) seqRead(rootPage int) []Page {
+	// read all data the related to paritcular column
+	//for now read only first page
+	page := r.read(rootPage)
+
+	pageParsed := parsePage(page, rootPage)
+	return []Page{pageParsed}
 }
 
 func (r Reader) read(pageNumber int) []byte {
@@ -63,5 +73,29 @@ func (r Reader) readHeader() []byte {
 	}
 
 	return header
+
+}
+
+func (r Reader) getSchemas() []DbSchema {
+	pageData := r.read(0)
+	page := parsePage(pageData, 0)
+
+	schemas := parseDataBaseSchemas(page)
+
+	reverse(schemas)
+
+	return schemas
+}
+
+func (r Reader) getSchemaByTablename(tableName string) (DbSchema, error) {
+	schemas := r.getSchemas()
+
+	for _, item := range schemas {
+		if item.tableName == tableName {
+			return item, nil
+		}
+	}
+
+	return DbSchema{}, fmt.Errorf("couldn't find schema for table :%v", tableName)
 
 }

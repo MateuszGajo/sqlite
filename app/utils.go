@@ -1,21 +1,26 @@
 package main
 
-func parseVarint(data []byte) (uint64, []byte) {
-	var val = uint64(0)
-	for range 9 {
-		b := data[0]
-		data = data[1:]
-		val |= (val << 7) | uint64(b&127)
+func parseVarint(buffer []byte) (uint64, []byte) {
+	currentOffset := 0
+	var varint uint64
 
-		if b&0x80 == 0 {
+	for range 9 {
+		b := buffer[currentOffset]
+
+		varint <<= 7
+		varint |= uint64(b & 0b01111111)
+
+		currentOffset++
+
+		if b&0b10000000 == 0 {
 			break
 		}
 	}
-	return val, data
+
+	return varint, buffer[currentOffset:]
 }
 
 func bigEndianConversion(val any, data []byte) {
-
 	switch v := val.(type) {
 	case *uint16:
 		for _, b := range data {
