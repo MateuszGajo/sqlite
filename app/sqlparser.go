@@ -40,18 +40,23 @@ type Token struct {
 }
 
 const (
-	spaceToken      TokenType = "SpaceToken"
-	selectToken     TokenType = "SelectToken"
-	tableToken      TokenType = "tableToken"
-	createToken     TokenType = "CreateToken"
-	fromToken       TokenType = "FromToken"
-	countToken      TokenType = "CountToken"
-	identifierToken TokenType = "IdentifierToken"
-	lParenToken     TokenType = "lParenToken"
-	rParenToken     TokenType = "rParenToken"
-	starToken       TokenType = "starToken"
-	commaToken      TokenType = "commaToken"
-	eofToken        TokenType = "eofToken"
+	spaceToken              TokenType = "SpaceToken"
+	selectToken             TokenType = "SelectToken"
+	tableToken              TokenType = "tableToken"
+	createToken             TokenType = "CreateToken"
+	whereToken              TokenType = "WhereToken"
+	fromToken               TokenType = "FromToken"
+	countToken              TokenType = "CountToken"
+	identifierToken         TokenType = "IdentifierToken"
+	logicalOperatorOrToken  TokenType = "LogicalOperatorOrToken"
+	logicalOperatorAndToken TokenType = "LogicalOperatorAndToken"
+	lParenToken             TokenType = "lParenToken"
+	rParenToken             TokenType = "rParenToken"
+	starToken               TokenType = "starToken"
+	commaToken              TokenType = "commaToken"
+	opToken                 TokenType = "opToken"
+	literalToken            TokenType = "literalToken"
+	eofToken                TokenType = "eofToken"
 )
 
 var clauseKeywords = map[string]Token{
@@ -59,6 +64,9 @@ var clauseKeywords = map[string]Token{
 	"CREATE": Token{tokenType: createToken},
 	"TABLE":  Token{tokenType: tableToken},
 	"FROM":   Token{tokenType: fromToken},
+	"WHERE":  Token{tokenType: whereToken},
+	"AND":    Token{tokenType: logicalOperatorAndToken},
+	"OR":     Token{tokenType: logicalOperatorOrToken},
 	"COUNT":  Token{tokenType: countToken, value: "count"},
 }
 
@@ -75,10 +83,14 @@ func (t TokenType) isAggregate() bool {
 	return false
 }
 
+func isAlphaNumerical(char byte) bool {
+	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')
+}
+
 func (t *Tokenizer) parseChars() Token {
 	char := t.peek()
 	stringOutput := ""
-	for (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') {
+	for isAlphaNumerical(char) {
 		stringOutput += string(char)
 		char = t.next()
 	}
@@ -92,8 +104,21 @@ func (t *Tokenizer) parseChars() Token {
 	return Token{tokenType: identifierToken, value: stringOutput}
 }
 
-// "CREATE TABLE apples\n(\n\tid integer primary key autoincrement,\n\tname text,\n\tcolor text\n)"
-// Toknizer shoudl skip useless whitespaces
+func (t *Tokenizer) literalToken() Token {
+	char := t.next()
+	stringOutput := ""
+	for isAlphaNumerical(char) || char == ' ' {
+		stringOutput += string(char)
+		char = t.next()
+	}
+	if char != '\'' {
+		panic("missing ending '")
+	}
+	t.next()
+
+	return Token{tokenType: literalToken, value: stringOutput}
+}
+
 func (t *Tokenizer) tokenizer() []Token {
 	tokens := []Token{}
 	for !t.eof() {
@@ -111,6 +136,11 @@ func (t *Tokenizer) tokenizer() []Token {
 		case ',':
 			tokens = append(tokens, Token{tokenType: commaToken})
 			t.next()
+		case '>', '<', '=':
+			tokens = append(tokens, Token{tokenType: opToken, value: string(t.peek())})
+			t.next()
+		case '\'':
+			tokens = append(tokens, t.literalToken())
 		case ' ', '\n', '\t':
 			t.skipWhiteSpaces()
 			if t.peek() == ')' {
@@ -126,20 +156,38 @@ func (t *Tokenizer) tokenizer() []Token {
 }
 
 // Grammar
-// sqlStatement ->  SelectStatement | CreateStatement(to do)
-// selectStatement -> SelectClause FromClause
-// createStatement -> Create Table tableName
-// createStatementArgs -> (" MultiString1 ")"
-// MultiString1-> string comma Multistring1
-// SelectClause -> Select space Aggregate
-// FromClause -> From space TableName
-// Aggregate -> AgreegateType AggregateArg
-// AggregateType -> Count
-// AggregateArg -> "(" MultiString ")"
-// MultiString -> "*" | string (comma string)*
-// TableName -> string
+// sqlStatement        -> selectStatement | createStatement
 
-// SELECT COUNT(*) FROM apples
+// selectStatement     -> SelectClause FromClause WhereClause
+// SelectClause        -> SELECT Aggregate
+// FromClause          -> FROM tableName
+// WhereClause      -> WHERE Condition | ε
+// Condition        -> Condition AND Condition
+//                   | Condition OR Condition
+//                   | fieldname op compareVal
+
+// createStatement     -> CREATE TABLE identifier createStatementArgs
+// createStatementArgs -> "(" columnList tableConstraintOpt ")" | ε
+// columnList          -> columnDef ColumnListTail
+// ColumnListTail      -> "," columnDef ColumnListTail | ε
+
+// columnDef           -> identifier typeOpt
+// typeOpt             -> type | ε
+// columnConstraintList -> columnConstraint columnConstraintList | ε
+// columnConstraint    -> PRIMARY KEY | NOT NULL | UNIQUE
+
+// Aggregate           -> AggregateType AggregateArg
+// AggregateType       -> COUNT
+// AggregateArg        -> "(" fieldOrStar ")"
+
+// MultiString         -> "*" | string ("," string)*
+
+// fieldOrStar         -> fieldName | starChar
+// fieldName           -> string
+// compareVal          -> string | number
+// tableName           -> string
+// op                  -> "=" | ">" | "<"
+// starChar 		   -> *
 
 type Parser struct {
 	tokens []Token
@@ -234,6 +282,13 @@ type SelectStatementNode interface{}
 type SelectStatement struct {
 	fields []SelectStatementNode
 	from   string
+	where  []WhereCondition
+}
+
+type WhereCondition struct {
+	field         string
+	operator      string
+	comparisonVal string
 }
 
 type CreateTableStatement struct {
@@ -272,12 +327,12 @@ func (p *Parser) selectCause() (SelectStatement, error) {
 		return SelectStatement{}, err
 	}
 
-	// _, err = p.expectNext(spaceToken)
-	// if err != nil {
-	// 	return SelectStatement{}, err
-	// }
-
 	from, err := p.fromClause()
+	if err != nil {
+		return SelectStatement{}, err
+	}
+
+	where, err := p.whereClause()
 	if err != nil {
 		return SelectStatement{}, err
 	}
@@ -285,6 +340,72 @@ func (p *Parser) selectCause() (SelectStatement, error) {
 	return SelectStatement{
 		fields: fields,
 		from:   from,
+		where:  where,
+	}, nil
+}
+
+func (p *Parser) whereClause() ([]WhereCondition, error) {
+	if p.peek().tokenType == eofToken {
+		return nil, nil
+	}
+
+	_, err := p.expectNext(whereToken)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = p.expectNext(spaceToken)
+	if err != nil {
+		return nil, err
+	}
+
+	whereConditions := []WhereCondition{}
+	p.next()
+
+	for {
+		whereCon, err := p.whereClauseCondition()
+		if err != nil {
+			return nil, err
+		}
+
+		whereConditions = append(whereConditions, whereCon)
+
+		if !(p.peek().tokenType == logicalOperatorAndToken || p.peek().tokenType == logicalOperatorOrToken) {
+			break
+		}
+		p.next()
+		p.skipWhiteSpaces()
+	}
+
+	return whereConditions, nil
+}
+
+func (p *Parser) whereClauseCondition() (WhereCondition, error) {
+	fieldName := p.peek()
+	if fieldName.tokenType != identifierToken {
+		return WhereCondition{}, fmt.Errorf("expected token to be identifierToken got: %v", fieldName.tokenType)
+	}
+	p.next()
+	p.skipWhiteSpaces()
+
+	currentOpToken := p.peek()
+	if currentOpToken.tokenType != opToken {
+		return WhereCondition{}, fmt.Errorf("expected token to be opToken got: %v", currentOpToken.tokenType)
+	}
+	p.next()
+	p.skipWhiteSpaces()
+
+	conditionToken := p.peek()
+	if conditionToken.tokenType != literalToken {
+		return WhereCondition{}, fmt.Errorf("expected token to be literla token got: %v", conditionToken.tokenType)
+	}
+	p.next()
+	p.skipWhiteSpaces()
+
+	return WhereCondition{
+		field:         fieldName.value,
+		operator:      currentOpToken.value,
+		comparisonVal: conditionToken.value,
 	}, nil
 }
 
@@ -464,6 +585,7 @@ func (p *Parser) fromClause() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("expected identifier token got: %v", token)
 	}
+	p.next()
 
 	return token.value, nil
 }

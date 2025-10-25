@@ -176,3 +176,111 @@ func TestCreateTableStatement(t *testing.T) {
 		t.Errorf("Exepect second column to have 0 constrains: %v", len(createTableStatement.columns[2].constrains))
 	}
 }
+
+func TestSelectStatementWithWhereClause(t *testing.T) {
+	ast := parseSqlStatement("SELECT aa FROM apples where aa='test1234'")
+
+	selectStatement, ok := ast.(SelectStatement)
+
+	if !ok {
+		t.Errorf("Exepected type to be select statement")
+	}
+
+	if selectStatement.from != "apples" {
+		t.Errorf("Expect from tables to be apples, got: %v", selectStatement.from)
+	}
+
+	if len(selectStatement.fields) != 1 {
+		t.Errorf("Expect to find only 1 field instead we got: %v", len(selectStatement.fields))
+	}
+
+	firstField, ok := selectStatement.fields[0].(SelectStatementFieldNode)
+
+	if !ok {
+		t.Errorf("expected field to be simple field, val: %v", firstField)
+	}
+
+	if firstField.field != "aa" {
+		t.Errorf("Expect first field to be aa got: %+v", firstField.field)
+	}
+
+	firstCondition := selectStatement.where[0]
+
+	if firstCondition.comparisonVal != "test1234" {
+		t.Errorf("Expectec comparison value to be test1234, got: %v", firstCondition.comparisonVal)
+	}
+
+	if firstCondition.operator != "=" {
+		t.Errorf("Expectec comparison op to be = %v", firstCondition.operator)
+	}
+
+	if firstCondition.field != "aa" {
+		t.Errorf("Expectec comparison field to be aa, got %v", firstCondition.field)
+	}
+}
+
+func TestSelectStatementWithMultipleWhereClause(t *testing.T) {
+	ast := parseSqlStatement("SELECT aa, bb FROM apples where aa='test1234' AND bb='1234test'")
+
+	selectStatement, ok := ast.(SelectStatement)
+
+	if !ok {
+		t.Errorf("Exepected type to be select statement")
+	}
+
+	if selectStatement.from != "apples" {
+		t.Errorf("Expect from tables to be apples, got: %v", selectStatement.from)
+	}
+
+	if len(selectStatement.fields) != 2 {
+		t.Errorf("Expect to find only 1 field instead we got: %v", len(selectStatement.fields))
+	}
+
+	firstField, ok := selectStatement.fields[0].(SelectStatementFieldNode)
+
+	if !ok {
+		t.Errorf("expected field to be simple field, val: %v", firstField)
+	}
+
+	if firstField.field != "aa" {
+		t.Errorf("Expect first field to be aa got: %+v", firstField.field)
+	}
+
+	secondField, ok := selectStatement.fields[1].(SelectStatementFieldNode)
+
+	if !ok {
+		t.Errorf("expected field to be simple field, val: %v", secondField)
+	}
+
+	if secondField.field != "bb" {
+		t.Errorf("Expect first field to be aa got: %+v", secondField.field)
+	}
+
+	firstCondition := selectStatement.where[0]
+
+	if firstCondition.comparisonVal != "test1234" {
+		t.Errorf("Expectec comparison value to be test1234, got: %v", firstCondition.comparisonVal)
+	}
+
+	if firstCondition.operator != "=" {
+		t.Errorf("Expectec comparison op to be = %v", firstCondition.operator)
+	}
+
+	if firstCondition.field != "aa" {
+		t.Errorf("Expectec comparison field to be aa, got %v", firstCondition.field)
+	}
+
+	secondCondition := selectStatement.where[1]
+
+	if secondCondition.comparisonVal != "1234test" {
+		t.Errorf("Expectec comparison value to be 1234test, got: %v", secondCondition.comparisonVal)
+	}
+
+	if secondCondition.operator != "=" {
+		t.Errorf("Expectec comparison op to be = %v", secondCondition.operator)
+	}
+
+	if secondCondition.field != "bb" {
+		t.Errorf("Expectec comparison field to be aa, got %v", secondCondition.field)
+	}
+}
