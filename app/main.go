@@ -41,7 +41,7 @@ func (s SqliteServer) handleSelectStatement(statement SelectStatement) error {
 	}
 
 	planner := CreatePlanner()
-	executionPlan := planner.preparePlan(nodes, statement.from)
+	executionPlan := planner.preparePlan(nodes, statement.from, statement.where)
 
 	extutor := NewExecutor(s.reader)
 	executeCols, err := extutor.execute(executionPlan)
@@ -85,6 +85,7 @@ func main() {
 	command := os.Args[2]
 	// databaseFilePath := "sample.db"
 	// command := "SELECT name, color FROM apples"
+	// command := "SELECT name, color FROM apples where color='Yellow'"
 	// command := "SELECT count(*) FROM apples"
 	// command := "select pear, apple, raspberry from banana"
 

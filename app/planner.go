@@ -12,20 +12,20 @@ type AggFunc struct {
 type PlannerColumn struct {
 	name    string
 	colType string
-	where   any
 }
 
 type ExecutionPlan struct {
 	columns   []PlannerColumn
 	aggFunc   []AggFunc
 	tablename string
+	where     []WhereCondition
 }
 
 func CreatePlanner() Planner {
 	return Planner{}
 }
 
-func (p Planner) preparePlan(nodes []any, tablename string) ExecutionPlan {
+func (p Planner) preparePlan(nodes []any, tablename string, where []WhereCondition) ExecutionPlan {
 	columns := []PlannerColumn{}
 	aggregates := []AggFunc{}
 
@@ -55,5 +55,6 @@ func (p Planner) preparePlan(nodes []any, tablename string) ExecutionPlan {
 		columns:   columns,
 		aggFunc:   aggregates,
 		tablename: tablename,
+		where:     where,
 	}
 }

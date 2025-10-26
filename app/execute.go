@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"reflect"
+)
 
 type Executor struct {
 	reader Reader
@@ -86,7 +89,6 @@ mainLoop:
 				columns[i] = PlannerColumn{
 					name:    column.name,
 					colType: schemaItem.columnType,
-					where:   "",
 				}
 				continue mainLoop
 			}
@@ -98,22 +100,38 @@ mainLoop:
 		return nil, fmt.Errorf("reading schema, expected create table statement")
 	}
 
+	whereHashTable := map[string]WhereCondition{}
+
+	for _, item := range plannerNode.where {
+		whereHashTable[item.field] = item
+	}
+
 	columnsRowData := []map[string]ExecuteColumn{}
 	for _, page := range pages {
 	cellLoop:
 		for _, cell := range page.cells {
 			columnData := make(map[string]ExecuteColumn)
 			for i, record := range cell.record {
-				column, ok := columns[i]
+				column, colOk := columns[i]
 
-				if !ok {
-					continue
+				whereCon, whereOk := whereHashTable[column.name]
+				if whereOk {
+					switch whereCon.operator {
+					case "=":
+						switch v := record.(type) {
+						case []byte:
+							if string(v) != whereCon.comparisonVal {
+								continue cellLoop
+							}
+						default:
+							panic(fmt.Sprintf("record type in where clause not supported, type: %v", reflect.TypeOf(v)))
+						}
+					default:
+						panic(fmt.Sprintf("not supported operator in where statement %v", whereCon.operator))
+					}
 				}
-
-				if column.where != "" {
-					panic("implement it later")
-					// i think it should skip cell loop and that should cover it
-					continue cellLoop
+				if !colOk {
+					continue
 				}
 
 				columnData[column.name] = ExecuteColumn{
