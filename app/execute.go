@@ -17,7 +17,7 @@ func NewExecutor(reader Reader) Executor {
 
 func (e Executor) execute(plannerNode ExecutionPlan) ([]map[string]ExecuteColumn, error) {
 	if len(plannerNode.columns) > 0 {
-		return e.getDataa(plannerNode)
+		return e.exectureColumnSearch(plannerNode)
 	}
 
 	columnsRowData := []map[string]ExecuteColumn{}
@@ -66,20 +66,7 @@ type ExecuteColumn struct {
 	data    any
 }
 
-func (e Executor) getDataa(plannerNode ExecutionPlan) ([]map[string]ExecuteColumn, error) {
-
-	schema, err := e.reader.getSchemaByTablename(plannerNode.tablename)
-
-	if err != nil {
-		return nil, err
-	}
-
-	pages := e.reader.seqRead(int(schema.rootPage))
-
-	sql := parseSqlStatement(schema.sqlText)
-
-	createTableSql, ok := sql.(CreateTableStatement)
-
+func (e Executor) getColumnHashMap(createTableSql CreateTableStatement, plannerNode ExecutionPlan) map[int]PlannerColumn {
 	columns := make(map[int]PlannerColumn)
 
 mainLoop:
@@ -95,17 +82,54 @@ mainLoop:
 		}
 	}
 
+	return columns
+}
+
+func (e Executor) getWhereHashMap(createTableSql CreateTableStatement, whereCondition []WhereCondition) map[int]WhereCondition {
+	columns := make(map[int]WhereCondition)
+
+mainLoop:
+	for i, schemaItem := range createTableSql.columns {
+		for _, whereCon := range whereCondition {
+			if schemaItem.name == whereCon.field {
+				columns[i] = whereCon
+				continue mainLoop
+			}
+		}
+	}
+
+	return columns
+}
+
+func (e Executor) exectureColumnSearch(plannerNode ExecutionPlan) ([]map[string]ExecuteColumn, error) {
+
+	schema, err := e.reader.getSchemaByTablename(plannerNode.tablename)
+
+	if err != nil {
+		return nil, err
+	}
+
+	pages := e.reader.seqRead(int(schema.rootPage))
+
+	sql := parseSqlStatement(schema.sqlText)
+
+	createTableSql, ok := sql.(CreateTableStatement)
+
+	columns := e.getColumnHashMap(createTableSql, plannerNode)
+
 	if !ok {
 		// for simplicity allow only create table, will be extended later
 		return nil, fmt.Errorf("reading schema, expected create table statement")
 	}
 
-	whereHashTable := map[string]WhereCondition{}
+	whereHashTable := e.getWhereHashMap(createTableSql, plannerNode.where)
 
-	for _, item := range plannerNode.where {
-		whereHashTable[item.field] = item
-	}
+	columnsRowData := e.getRawData(pages, columns, whereHashTable, plannerNode.aggFunc)
 
+	return columnsRowData, nil
+}
+
+func (e Executor) getRawData(pages []Page, columns map[int]PlannerColumn, whereHashTable map[int]WhereCondition, aggFunc []AggFunc) []map[string]ExecuteColumn {
 	columnsRowData := []map[string]ExecuteColumn{}
 	for _, page := range pages {
 	cellLoop:
@@ -114,7 +138,7 @@ mainLoop:
 			for i, record := range cell.record {
 				column, colOk := columns[i]
 
-				whereCon, whereOk := whereHashTable[column.name]
+				whereCon, whereOk := whereHashTable[i]
 				if whereOk {
 					switch whereCon.operator {
 					case "=":
@@ -143,7 +167,7 @@ mainLoop:
 			columnsRowData = append(columnsRowData, columnData)
 
 			// this is only for groupby statements, it shouldnt execture when there is no groupby
-			for _, agg := range plannerNode.aggFunc {
+			for _, agg := range aggFunc {
 				switch agg.funcAgg {
 				case "COUNT":
 				case "AVG":
@@ -152,5 +176,5 @@ mainLoop:
 		}
 	}
 
-	return columnsRowData, nil
+	return columnsRowData
 }

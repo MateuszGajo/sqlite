@@ -85,7 +85,7 @@ func main() {
 	command := os.Args[2]
 	// databaseFilePath := "sample.db"
 	// command := "SELECT name, color FROM apples"
-	// command := "SELECT name, color FROM apples where color='Yellow'"
+	// command := "SELECT name, color FROM apples where color='Red'"
 	// command := "SELECT count(*) FROM apples"
 	// command := "select pear, apple, raspberry from banana"
 
