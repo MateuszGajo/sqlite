@@ -87,10 +87,12 @@ func isAlphaNumerical(char byte) bool {
 	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')
 }
 
+// "CREATE TABLE \"superheroes\" (id integer primary key autoincrement, name text not null, eye_color text, hair_color text, appearance_count integer, first_appearance text, first_appearance_year text)"
+// we are missing "\""
 func (t *Tokenizer) parseChars() Token {
 	char := t.peek()
 	stringOutput := ""
-	for isAlphaNumerical(char) {
+	for isAlphaNumerical(char) || char == '_' {
 		stringOutput += string(char)
 		char = t.next()
 	}
@@ -101,10 +103,14 @@ func (t *Tokenizer) parseChars() Token {
 		return val
 	}
 
+	if stringOutput == "" {
+		panic("empty output")
+	}
+
 	return Token{tokenType: identifierToken, value: stringOutput}
 }
 
-func (t *Tokenizer) literalToken() Token {
+func (t *Tokenizer) singleQuoteParse() Token {
 	char := t.next()
 	stringOutput := ""
 	for isAlphaNumerical(char) || char == ' ' {
@@ -113,6 +119,22 @@ func (t *Tokenizer) literalToken() Token {
 	}
 	if char != '\'' {
 		panic("missing ending '")
+	}
+	t.next()
+
+	return Token{tokenType: literalToken, value: stringOutput}
+}
+
+// for now identical as singleQuote it will change though
+func (t *Tokenizer) doubleQuoteParse() Token {
+	char := t.next()
+	stringOutput := ""
+	for isAlphaNumerical(char) || char == ' ' {
+		stringOutput += string(char)
+		char = t.next()
+	}
+	if char != '"' {
+		panic("missing ending \"")
 	}
 	t.next()
 
@@ -139,8 +161,10 @@ func (t *Tokenizer) tokenizer() []Token {
 		case '>', '<', '=':
 			tokens = append(tokens, Token{tokenType: opToken, value: string(t.peek())})
 			t.next()
+		case '"':
+			tokens = append(tokens, t.doubleQuoteParse())
 		case '\'':
-			tokens = append(tokens, t.literalToken())
+			tokens = append(tokens, t.singleQuoteParse())
 		case ' ', '\n', '\t':
 			t.skipWhiteSpaces()
 			if t.peek() == ')' {

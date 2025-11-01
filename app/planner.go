@@ -10,8 +10,9 @@ type AggFunc struct {
 }
 
 type PlannerColumn struct {
-	name    string
-	colType string
+	name      string
+	colType   string
+	constrain []Constrain
 }
 
 type ExecutionPlan struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func showResultSet(nodes []any, executColumns []map[string]ExecuteColumn) {
@@ -27,8 +26,7 @@ func showResultSet(nodes []any, executColumns []map[string]ExecuteColumn) {
 				v := b.data.([]uint8)
 				resData += string(v) + "|"
 			case "integer":
-				v := b.data.(int)
-				resData += strconv.Itoa(v) + "|"
+				resData += fmt.Sprint(b.data) + "|"
 			default:
 				panic("unknown type")
 			}

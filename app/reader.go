@@ -33,12 +33,26 @@ func NewReader(databaseFilePath string) Reader {
 }
 
 func (r Reader) seqRead(rootPage int) []Page {
-	// read all data the related to paritcular column
-	//for now read only first page
 	page := r.read(rootPage)
-
 	pageParsed := parsePage(page, rootPage)
-	return []Page{pageParsed}
+	return r.readRecusrive(pageParsed)
+}
+
+func (r Reader) readRecusrive(pageParsed Page) []Page {
+	if pageParsed.btreeHeader.btreeType != 0x05 {
+		return []Page{pageParsed}
+	}
+
+	pages := []Page{}
+	for _, cell := range pageParsed.cells {
+		pageNumber := binary.BigEndian.Uint32(cell.pageNumberLeftChild)
+		page := r.read(int(pageNumber))
+		cellPageParsed := parsePage(page, int(pageNumber))
+
+		pages = append(pages, r.readRecusrive(cellPageParsed)...)
+	}
+
+	return pages
 }
 
 func (r Reader) read(pageNumber int) []byte {

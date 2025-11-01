@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 type DbHeader struct {
@@ -117,6 +118,7 @@ func parseCell(data []byte, btreeType byte) (Cell, []byte) {
 	}
 	var payload []byte
 	var pageNumberOfFirstoverflow []byte
+	var record []any
 
 	if btreeType != 0x05 {
 		payload = data[:numberOfBytesPayload]
@@ -127,9 +129,8 @@ func parseCell(data []byte, btreeType byte) (Cell, []byte) {
 			pageNumberOfFirstoverflow = data[:4]
 			data = data[4:]
 		}
+		record = parseRecord(payload)
 	}
-
-	record := parseRecord(payload)
 
 	return Cell{
 		pageNumberLeftChild:       pageNumberLeftChild,
@@ -189,8 +190,14 @@ func parseRecord(data []byte) []any {
 			bigEndianConversion(&val, data[0:8])
 			data = data[8:]
 			resData = append(resData, val)
-		case 7, 8, 9, 10, 11:
-			panic("not implemented currently")
+		case 7, 10, 11:
+			panic(fmt.Sprintf("not implemented currently %v", column))
+		case 8:
+			val := false
+			resData = append(resData, val)
+		case 9:
+			val := true
+			resData = append(resData, val)
 		default:
 			if (column-13)%2 == 1 {
 				panic("blob currently not implemenbted")
@@ -224,10 +231,11 @@ func parsePage(page []byte, pageNumber int) Page {
 	cells := []Cell{}
 	var cell Cell
 	for i := 0; i < int(btreeHeader.numberOfCells); i++ {
-		cell, contentData = parseCell(contentData, 0x0d)
+		cell, contentData = parseCell(contentData, btreeHeader.btreeType)
 
 		cells = append(cells, cell)
 	}
+	// reverse(cells)
 
 	return Page{
 		btreeHeader: btreeHeader,

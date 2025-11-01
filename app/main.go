@@ -84,10 +84,12 @@ func main() {
 	databaseFilePath := os.Args[1]
 	command := os.Args[2]
 	// databaseFilePath := "sample.db"
+	// databaseFilePath := "superheroes.db"
 	// command := "SELECT name, color FROM apples"
 	// command := "SELECT name, color FROM apples where color='Red'"
 	// command := "SELECT count(*) FROM apples"
 	// command := "select pear, apple, raspberry from banana"
+	// command := "SELECT id, name FROM superheroes WHERE hair_color = 'Violet Hair'"
 
 	reader := NewReader(databaseFilePath)
 

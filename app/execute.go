@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"slices"
 )
 
 type Executor struct {
@@ -74,8 +75,9 @@ mainLoop:
 		for _, column := range plannerNode.columns {
 			if schemaItem.name == column.name {
 				columns[i] = PlannerColumn{
-					name:    column.name,
-					colType: schemaItem.columnType,
+					name:      column.name,
+					colType:   schemaItem.columnType,
+					constrain: schemaItem.constrains,
 				}
 				continue mainLoop
 			}
@@ -147,6 +149,9 @@ func (e Executor) getRawData(pages []Page, columns map[int]PlannerColumn, whereH
 							if string(v) != whereCon.comparisonVal {
 								continue cellLoop
 							}
+						case nil:
+							//implment is null condition for not, not allow it
+							continue cellLoop
 						default:
 							panic(fmt.Sprintf("record type in where clause not supported, type: %v", reflect.TypeOf(v)))
 						}
@@ -157,7 +162,9 @@ func (e Executor) getRawData(pages []Page, columns map[int]PlannerColumn, whereH
 				if !colOk {
 					continue
 				}
-
+				if column.colType == "integer" && slices.Contains(column.constrain, autoIncrement) {
+					record = cell.rowId
+				}
 				columnData[column.name] = ExecuteColumn{
 					colType: column.colType,
 					data:    record,
